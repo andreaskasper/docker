@@ -1,4 +1,4 @@
-version: '3.3'
+version: '2.3'
 
 services:
   teamspeak:
@@ -12,7 +12,3 @@ services:
       TS3SERVER_LICENSE: accept
     volumes:
       - ./data:/var/ts3server
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
