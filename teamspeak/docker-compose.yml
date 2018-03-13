@@ -1,4 +1,4 @@
-version: '3'
+version: '3.3'
 
 services:
   teamspeak:
@@ -11,7 +11,7 @@ services:
     environment:
       TS3SERVER_LICENSE: accept
     volumes:
-       ./data:/var/ts3server
+      - ./data:/var/ts3server
     deploy:
       replicas: 1
       restart_policy:
