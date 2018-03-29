@@ -23,5 +23,6 @@ EXPOSE 22
 EXPOSE 3306
 
 COPY ["docker-entrypoint.sh", "/usr/bin/"]
+RUN chmod +x /usr/bin/docker-entrypoint.sh
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+ ENTRYPOINT ["docker-entrypoint.sh"]
