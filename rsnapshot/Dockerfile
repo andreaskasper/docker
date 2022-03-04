@@ -1,7 +1,7 @@
 FROM debian:latest
 LABEL maintainer="Andreas.Kasper@goo1.de"
 
-CMD["rsnapshot","daily"]
+CMD ["rsnapshot","daily"]
 ENTRYPOINT ["/entrypoint"]
 
 RUN apt-get update \
