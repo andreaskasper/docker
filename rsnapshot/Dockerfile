@@ -1,5 +1,8 @@
-FROM debian:latest
+FROM debian:10-slim
 LABEL maintainer="Andreas.Kasper@goo1.de"
+
+CMD ["rsnapshot","daily"]
+ENTRYPOINT ["/entrypoint"]
 
 RUN apt-get update \
     && apt-get install -y rsnapshot \
@@ -8,6 +11,3 @@ RUN apt-get update \
 ADD entrypoint.sh /entrypoint
 
 RUN chmod 0777 /entrypoint
-
-CMD ["rsnapshot","daily"]
-ENTRYPOINT ["/entrypoint"]
