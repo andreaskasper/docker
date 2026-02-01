@@ -1,4 +1,4 @@
-name: Docker Image openclaw CI
+name: Docker Image Openclaw CI
 
 on:
   push:
@@ -6,14 +6,11 @@ on:
   pull_request:
     branches: [ master ]
   schedule:
-    - cron: '0 0 * * 0' #weekly
+    - cron: '0 0 * * 0' # weekly (Sunday 00:00 UTC)
   workflow_dispatch:
-    branches: [ master ]
-  
+
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -21,20 +18,55 @@ jobs:
         uses: actions/checkout@v4
 
       # YYYY-MM-DD (UTC on GitHub runners)
-      - name: Set date tag
-        id: date
-        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+      - name: Set build date tag
+        id: builddate
+        run: echo "DATE=$(date -u +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       # Resolve what "openclaw@latest" currently means on npm
-      - name: Resolve OpenClaw version from npm (latest)
+      # and normalize date-like versions to safe docker tags
+      - name: Resolve OpenClaw version from npm (latest) + normalize
         id: ocv
+        shell: bash
         run: |
-          VERSION="$(npm view openclaw version)"
-          MAJOR="$(echo "$VERSION" | cut -d. -f1)"
-          MINOR="$(echo "$VERSION" | cut -d. -f1,2)"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "MAJOR=$MAJOR" >> $GITHUB_OUTPUT
-          echo "MINOR=$MINOR" >> $GITHUB_OUTPUT
+          RAW="$(npm view openclaw version)"
+          echo "RAW=$RAW" >> $GITHUB_OUTPUT
+
+          # If RAW looks like YYYY.M.D or YYYY.MM.DD etc., normalize to YYYY-MM-DD (zero padded)
+          if [[ "$RAW" =~ ^([0-9]{4})\.([0-9]{1,2})\.([0-9]{1,2})$ ]]; then
+            Y="${BASH_REMATCH[1]}"
+            M="$(printf '%02d' "${BASH_REMATCH[2]}")"
+            D="$(printf '%02d' "${BASH_REMATCH[3]}")"
+            NORM="${Y}-${M}-${D}"
+          # If RAW already looks like YYYY-MM-DD (or YYYY-M-D), normalize/pad too
+          elif [[ "$RAW" =~ ^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})$ ]]; then
+            Y="${BASH_REMATCH[1]}"
+            M="$(printf '%02d' "${BASH_REMATCH[2]}")"
+            D="$(printf '%02d' "${BASH_REMATCH[3]}")"
+            NORM="${Y}-${M}-${D}"
+          else
+            # Fallback: keep it, but make it docker-tag-safe just in case
+            # (replace anything not [A-Za-z0-9_.-] with '-')
+            NORM="$(echo "$RAW" | sed -E 's/[^A-Za-z0-9_.-]+/-/g')"
+            # Year/year-month only if it starts with 4 digits
+            Y="$(echo "$RAW" | sed -nE 's/^([0-9]{4}).*/\1/p')"
+          fi
+
+          # Derive YEAR and YEAR_MONTH if NORM begins with YYYY-MM
+          if [[ "$NORM" =~ ^([0-9]{4})-([0-9]{2})-([0-9]{2})$ ]]; then
+            YEAR="${BASH_REMATCH[1]}"
+            YEAR_MONTH="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+          elif [[ "$RAW" =~ ^([0-9]{4})\.([0-9]{1,2})\.([0-9]{1,2})$ ]]; then
+            YEAR="${BASH_REMATCH[1]}"
+            YEAR_MONTH="${BASH_REMATCH[1]}-$(printf '%02d' "${BASH_REMATCH[2]}")"
+          else
+            YEAR="${Y:-}"
+            YEAR_MONTH=""
+          fi
+
+          echo "VERSION=$RAW" >> $GITHUB_OUTPUT
+          echo "TAG=$NORM" >> $GITHUB_OUTPUT
+          echo "YEAR=$YEAR" >> $GITHUB_OUTPUT
+          echo "YEAR_MONTH=$YEAR_MONTH" >> $GITHUB_OUTPUT
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -47,16 +79,15 @@ jobs:
         with:
           context: openclaw/.
           push: true
-          # Requires your Dockerfile to include:
+          # Dockerfile must support:
           #   ARG OPENCLAW_VERSION=latest
           #   RUN npm install -g openclaw@${OPENCLAW_VERSION}
           build-args: |
             OPENCLAW_VERSION=${{ steps.ocv.outputs.VERSION }}
           tags: |
             andreaskasper/openclaw:latest
-            andreaskasper/openclaw:${{ steps.date.outputs.DATE }}
-            andreaskasper/openclaw:${{ steps.ocv.outputs.MAJOR }}
-            andreaskasper/openclaw:${{ steps.ocv.outputs.MINOR }}
-            andreaskasper/openclaw:${{ steps.ocv.outputs.VERSION }}
+            andreaskasper/openclaw:${{ steps.builddate.outputs.DATE }}
+            andreaskasper/openclaw:${{ steps.ocv.outputs.TAG }}
+            andreaskasper/openclaw:${{ steps.ocv.outputs.YEAR }}
+            andreaskasper/openclaw:${{ steps.ocv.outputs.YEAR_MONTH }}
             andreaskasper/openclaw:${{ github.sha }}
-
