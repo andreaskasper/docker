@@ -5,7 +5,7 @@ LABEL maintainer="Andreas Kasper <andreas.kasper@scoring.dance>"
 
 # Basic deps (curl for install/debug; tini for clean signal handling)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl tini \
+    ca-certificates curl tini git \
   && rm -rf /var/lib/apt/lists/*
 
 ARG OPENCLAW_VERSION=latest
