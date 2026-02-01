@@ -1,0 +1,62 @@
+name: Docker Image openclaw CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: '0 0 * * 0' #weekly
+  workflow_dispatch:
+    branches: [ master ]
+  
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # YYYY-MM-DD (UTC on GitHub runners)
+      - name: Set date tag
+        id: date
+        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      # Resolve what "openclaw@latest" currently means on npm
+      - name: Resolve OpenClaw version from npm (latest)
+        id: ocv
+        run: |
+          VERSION="$(npm view openclaw version)"
+          MAJOR="$(echo "$VERSION" | cut -d. -f1)"
+          MINOR="$(echo "$VERSION" | cut -d. -f1,2)"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "MAJOR=$MAJOR" >> $GITHUB_OUTPUT
+          echo "MINOR=$MINOR" >> $GITHUB_OUTPUT
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: andreaskasper
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: openclaw/.
+          push: true
+          # Requires your Dockerfile to include:
+          #   ARG OPENCLAW_VERSION=latest
+          #   RUN npm install -g openclaw@${OPENCLAW_VERSION}
+          build-args: |
+            OPENCLAW_VERSION=${{ steps.ocv.outputs.VERSION }}
+          tags: |
+            andreaskasper/openclaw:latest
+            andreaskasper/openclaw:${{ steps.date.outputs.DATE }}
+            andreaskasper/openclaw:${{ steps.ocv.outputs.MAJOR }}
+            andreaskasper/openclaw:${{ steps.ocv.outputs.MINOR }}
+            andreaskasper/openclaw:${{ steps.ocv.outputs.VERSION }}
+            andreaskasper/openclaw:${{ github.sha }}
+
