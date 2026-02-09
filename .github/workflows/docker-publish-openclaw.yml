@@ -28,6 +28,8 @@ jobs:
         id: ocv
         shell: bash
         run: |
+          set -euo pipefail
+
           RAW="$(npm view openclaw version)"
           echo "RAW=$RAW" >> $GITHUB_OUTPUT
 
@@ -74,6 +76,29 @@ jobs:
           username: andreaskasper
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Build tags safely (skip empty YEAR / YEAR_MONTH)
+      - name: Build tag list (skip empty)
+        id: taglist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAGS=()
+          TAGS+=("andreaskasper/openclaw:latest")
+          TAGS+=("andreaskasper/openclaw:${{ steps.builddate.outputs.DATE }}")
+          TAGS+=("andreaskasper/openclaw:${{ steps.ocv.outputs.TAG }}")
+          TAGS+=("andreaskasper/openclaw:${{ github.sha }}")
+
+          if [[ -n "${{ steps.ocv.outputs.YEAR }}" ]]; then
+            TAGS+=("andreaskasper/openclaw:${{ steps.ocv.outputs.YEAR }}")
+          fi
+
+          if [[ -n "${{ steps.ocv.outputs.YEAR_MONTH }}" ]]; then
+            TAGS+=("andreaskasper/openclaw:${{ steps.ocv.outputs.YEAR_MONTH }}")
+          fi
+
+          printf "TAGS<<EOF\n%s\nEOF\n" "$(printf "%s\n" "${TAGS[@]}")" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -84,10 +109,4 @@ jobs:
           #   RUN npm install -g openclaw@${OPENCLAW_VERSION}
           build-args: |
             OPENCLAW_VERSION=${{ steps.ocv.outputs.VERSION }}
-          tags: |
-            andreaskasper/openclaw:latest
-            andreaskasper/openclaw:${{ steps.builddate.outputs.DATE }}
-            andreaskasper/openclaw:${{ steps.ocv.outputs.TAG }}
-            andreaskasper/openclaw:${{ steps.ocv.outputs.YEAR }}
-            andreaskasper/openclaw:${{ steps.ocv.outputs.YEAR_MONTH }}
-            andreaskasper/openclaw:${{ github.sha }}
+          tags: ${{ steps.taglist.outputs.TAGS }}
