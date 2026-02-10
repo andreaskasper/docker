@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  ollama-kimik25:
+    build: .
+    container_name: ollama-kimik25
+    ports:
+      - "18789:18789"  # OpenClaw
+      - "11434:11434"  # Ollama
+    volumes:
+      - openclaw-data:/home/openclaw/.openclaw
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    # Uncomment for GPU support (NVIDIA)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  openclaw-data:
+    driver: local
+  ollama-data:
+    driver: local
