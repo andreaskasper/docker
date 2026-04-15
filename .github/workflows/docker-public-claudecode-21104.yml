@@ -1,4 +1,4 @@
-name: Build & Push claude-code (Docker Hub)
+name: Build & Push claude-code (Docker Hub) v2.1.104
 
 on:
   workflow_dispatch: {}
