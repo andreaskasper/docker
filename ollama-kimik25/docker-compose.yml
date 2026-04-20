@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  ollama:
+    build: .
+    container_name: ollama-kimik25
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    # Uncomment for GPU support (NVIDIA)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  ollama-data:
+    driver: local
