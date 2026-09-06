@@ -21,16 +21,19 @@ php:8.3-apache  →  andreaskasper/php:8.3-apache-github
 ## What it does
 
 ```
-┌──────────┐   push    ┌────────────┐   webhook    ┌───────────────────┐
-│ your git │ ───────► │   GitHub   │ ───────────► │  container          │
-│   push   │           │            │ ◄─────────── │  ┌───────────────┐  │
-└──────────┘           └────────────┘   ls-remote  │  │ update loop   │  │
-                                        every 5m   │  └───────┬───────┘  │
-                                                   │          │          │
-                                                   │     /var/www        │
-                                                   │          │          │
-                                                   │      Apache + PHP   │
-                                                   └───────────────────┘
+             push                    webhook, instantly
+  you  ->  github.com  ------------------------------+
+                 ^                                   |
+                 |  git ls-remote, every 5 min       |
+                 |                                   v
+           +-----+-----------------------------------------+
+           |                                     update    |
+           |   container                          loop     |
+           |                                        |      |
+           |                              clone / reset    |
+           |                                        v      |
+           |   Apache + PHP  <--- serves ---   /var/www     |
+           +-----------------------------------------------+
 ```
 
 On start the container clones `GIT_REPO` into `/var/www` and hands over to
