@@ -1,0 +1,48 @@
+# A public repository, behind Traefik, updating itself every five minutes.
+#
+#   docker compose -f docker-compose.example.yml up -d
+#
+# The working copy lives in a named volume so that a restart does not re-clone
+# and, more importantly, so that a GitHub outage never leaves an empty site.
+
+services:
+  site:
+    image: andreaskasper/php:8.3-apache-github
+    restart: unless-stopped
+    environment:
+      GIT_REPO: https://github.com/andreaskasper/example-site.git
+      # GIT_REF:            main            # default: the remote's default branch
+      # DOCUMENT_ROOT:      /var/www/html   # default: html/, else public/, else the repo root
+      GIT_POLL_INTERVAL: "300"
+      APACHE_MODS: "rewrite headers expires"
+      APACHE_ALLOW_OVERRIDE: All
+      APACHE_SERVER_NAME: example.com
+      TRUSTED_PROXIES: 172.16.0.0/12
+      PHP_INI_PRESET: production
+      PHP_MEMORY_LIMIT: 256M
+      PHP_UPLOAD_MAX_FILESIZE: 32M
+      PHP_POST_MAX_SIZE: 32M
+      PHP_TIMEZONE: Europe/Berlin
+      COMPOSER_INSTALL: "true"
+      # Push-driven updates. Point a GitHub webhook at
+      # https://example.com/_git/webhook with this value as its secret.
+      WEBHOOK_SECRET_FILE: /run/secrets/webhook_secret
+      # Private repository? Add a deploy token:
+      # GIT_TOKEN_FILE: /run/secrets/git_token
+    volumes:
+      - site:/var/www
+    secrets:
+      - webhook_secret
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.site.rule: Host(`example.com`)
+      traefik.http.routers.site.entrypoints: websecure
+      traefik.http.routers.site.tls.certresolver: le
+      traefik.http.services.site.loadbalancer.server.port: "80"
+
+volumes:
+  site:
+
+secrets:
+  webhook_secret:
+    file: ./secrets/webhook_secret
