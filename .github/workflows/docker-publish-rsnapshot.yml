@@ -1,48 +1,53 @@
-name: Docker Image rsnapshot CI
+name: Build & Push rsnapshot
+
+# The `schedule:` trigger that used to be here is gone. GitHub disables a
+# scheduled workflow after 60 days of repository inactivity, and this one had
+# been disabled since 2022 — every dispatch to it answered 422 and nobody was
+# told. The weekly rebuild belongs in n8n with the others.
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
+    paths:
+      - 'rsnapshot/**'
+      - '.github/workflows/docker-publish-rsnapshot.yml'
   pull_request:
-    branches: [ master ]
-  schedule:
-    - cron: '0 0 * * 0'
-#weekly
-  
+    branches: [master]
+    paths:
+      - 'rsnapshot/**'
+      - '.github/workflows/docker-publish-rsnapshot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-      -
-        name: Checkout
-        uses: actions/checkout@v2
-#      -
-#        name: Set up QEMU
-#        uses: docker/setup-qemu-action@v1
-#      -
-#        name: Set up Docker Buildx
-#        uses: docker/setup-buildx-action@v1
-      -
-        name: Login to DockerHub
-        uses: docker/login-action@v1
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
         with:
           username: andreaskasper
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Build and push 1
-        uses: docker/build-push-action@v2
+
+      # One build, two tags. The old workflow ran the same context through
+      # build-push-action twice, which cost double the time for an identical
+      # image.
+      - name: Build and push
+        uses: docker/build-push-action@v6
         with:
-          context: rsnapshot/.
-          push: true
-          tags: andreaskasper/rsnapshot:latest
-      -
-        name: Build and push 2
-        uses: docker/build-push-action@v2
-        with:
-          context: rsnapshot/.
-          push: true
-          tags: andreaskasper/rsnapshot:debian
+          context: ./rsnapshot
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            andreaskasper/rsnapshot:latest
+            andreaskasper/rsnapshot:debian
+          cache-from: type=gha,scope=rsnapshot
+          cache-to: type=gha,mode=max,scope=rsnapshot
