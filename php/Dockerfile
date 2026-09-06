@@ -50,6 +50,12 @@ ENV COMPOSER_HOME=/opt/composer \
     COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_NO_INTERACTION=1
 
+# The base image's WORKDIR is /var/www/html, which the next step deletes. Any
+# git command whose getcwd() fails aborts with exit 128 ("Unable to read
+# current working directory"), so the directory has to move first. It is also
+# the sensible default for `docker exec`, since /var/www is the working copy.
+WORKDIR /var/www
+
 # /var/www/html ships with the base image and would make `git clone /var/www`
 # fail on a non-empty directory. The clone brings its own html/ — or
 # DOCUMENT_ROOT points somewhere else.
