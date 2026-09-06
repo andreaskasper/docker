@@ -1,0 +1,141 @@
+name: Build & Push php-apache-github
+
+# No `schedule:` on purpose. GitHub disables a workflow that has one after 60
+# days of repository inactivity, and a disabled workflow answers every
+# workflow_dispatch with 422 — which is exactly how the openclaw, solana,
+# ssh-tarpit and http-honeypot builds silently stopped running for four
+# months. The weekly rebuild is dispatched from n8n instead.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'php/**'
+      - '.github/workflows/docker-publish-php.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'php/**'
+      - '.github/workflows/docker-publish-php.yml'
+  workflow_dispatch:
+    inputs:
+      php_versions:
+        description: 'JSON array of PHP versions to build'
+        required: false
+        default: '["8.2","8.3","8.4"]'
+      push:
+        description: 'Push to the registries'
+        type: boolean
+        required: false
+        default: true
+
+env:
+  IMAGE_NAME: php
+  LATEST_MAJOR: '8.4'   # gets the extra 8-apache-github tag
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Cheap, and it catches the mistakes that a 4-minute image build would only
+  # reveal at runtime.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck -x --source-path=SCRIPTDIR -S style \
+            php/bin/*.sh php/lib/common.sh php/test/sync-test.sh \
+            webproject/docker-entrypoint.sh
+
+      - name: PHP syntax
+        run: php -l php/webhook/index.php
+
+      - name: Synchronisation tests
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name CI
+          bash php/test/sync-test.sh
+
+  build:
+    name: PHP ${{ matrix.php }}
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ${{ fromJSON(github.event.inputs.php_versions || '["8.2","8.3","8.4"]') }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request' && github.event.inputs.push != 'false'
+        uses: docker/login-action@v3
+        with:
+          username: andreaskasper
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request' && github.event.inputs.push != 'false'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compose tags
+        id: tags
+        run: |
+          tags="andreaskasper/${IMAGE_NAME}:${{ matrix.php }}-apache-github"
+          tags="${tags},ghcr.io/${{ github.repository_owner }}/${IMAGE_NAME}:${{ matrix.php }}-apache-github"
+          if [ "${{ matrix.php }}" = "${LATEST_MAJOR}" ]; then
+            tags="${tags},andreaskasper/${IMAGE_NAME}:8-apache-github"
+            tags="${tags},ghcr.io/${{ github.repository_owner }}/${IMAGE_NAME}:8-apache-github"
+          fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./php
+          build-args: PHP_VERSION=${{ matrix.php }}
+          # amd64 only. The PHP extensions are compiled from source, and under
+          # QEMU that turns a two-minute build into twenty per version.
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' && github.event.inputs.push != 'false' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=php-${{ matrix.php }}
+          cache-to: type=gha,mode=max,scope=php-${{ matrix.php }}
+          load: ${{ github.event_name == 'pull_request' }}
+          provenance: false
+
+      # Proves the image starts, clones a real repository and serves it —
+      # which is the part a successful `docker build` says nothing about.
+      - name: Smoke test
+        if: github.event_name == 'pull_request'
+        run: |
+          docker run -d --name smoke -p 8080:80 \
+            -e GIT_REPO=https://github.com/andreaskasper/docker.git \
+            -e DOCUMENT_ROOT=/var/www \
+            -e GIT_POLL_INTERVAL=0 \
+            andreaskasper/php:${{ matrix.php }}-apache-github
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/README.md || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          docker logs smoke
+          test "$code" = "200"
+          # The working copy must be reachable, its .git must not be.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/.git/config)" = "403"
+          docker rm -f smoke
